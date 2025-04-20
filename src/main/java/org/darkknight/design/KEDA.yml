@@ -1,0 +1,56 @@
+  Kafka Cluster
+    ↓
+    Prometheus / Burrow / Kafka Exporter
+    ↓
+    Monitor Consumer Group Lag
+    ↓
+    Autoscaler (e.g., KEDA / Custom Lambda / CloudWatch Alarms)
+    ↓
+    Scale Kubernetes Pods / ECS Tasks
+    ↓
+    New Consumers Join → Kafka Rebalance → Higher Consumption → Lag Decreases
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-consumer
+  template:
+    metadata:
+      labels:
+        app: kafka-consumer
+    spec:
+      containers:
+        - name: consumer
+          image: your-consumer-image:latest
+          env:
+            - name: KAFKA_BROKER
+              value: "my-kafka-bootstrap:9092"
+            - name: KAFKA_TOPIC
+              value: "my-topic"
+
+
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: kafka-consumer-scaler
+spec:
+  scaleTargetRef:
+    name: kafka-consumer
+  pollingInterval: 30  # Check every 30 seconds
+  cooldownPeriod: 300  # Wait 5 minutes before scaling down
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: my-kafka-bootstrap:9092
+        consumerGroup: my-consumer-group
+        topic: my-topic
+        lagThreshold: "1000"  # When lag > 1000, scale up
+        activationLagThreshold: "100" # Only activate scaling if lag > 100
